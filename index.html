@@ -403,6 +403,35 @@
             animation: spin 1s linear infinite;
         }
         
+        .alert {
+            padding: 12px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .alert-error {
+            background-color: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef9a9a;
+        }
+        
+        .alert-success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #a5d6a7;
+        }
+        
+        .alert-close {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            color: inherit;
+        }
+        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -426,6 +455,8 @@
             <p>解决"不知道吃什么"的困扰</p>
         </div>
     </header>
+    
+    <div id="alert-container" style="position: fixed; top: 80px; left: 0; right: 0; z-index: 1000; padding: 0 15px;"></div>
     
     <div class="nav-tabs">
         <div class="nav-tab active" data-target="menu-section">
@@ -613,15 +644,10 @@
     </div>
 
     <script>
-        // Supabase初始化
+        // Supabase初始化 - 请替换为您的实际URL和密钥
         const supabaseUrl = 'https://uqlfjzfesezbdyjeazbd.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbGZqemZlc2V6YmR5amVhemJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY5NzAxMjksImV4cCI6MjA3MjU0NjEyOX0.V8wfMYLencQ7nQqfiMPoXWELvqeFyY9FXg6W0i6Ug70';
         const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-        
-        //const supabaseUrl = process.env.SUPABASE_URL;
-        //const supabaseKey = process.env.SUPABASE_ANON_KEY;
-        //const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-
         
         // 全局数据
         let dishes = [];
@@ -641,6 +667,31 @@
         const categoryModal = document.getElementById('category-modal');
         const dishModal = document.getElementById('dish-modal');
         const categoriesList = document.getElementById('categories-list');
+        const alertContainer = document.getElementById('alert-container');
+        
+        // 显示提示信息
+        function showAlert(message, type = 'error') {
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.innerHTML = `
+                <span>${message}</span>
+                <button class="alert-close">&times;</button>
+            `;
+            
+            alertContainer.appendChild(alert);
+            
+            // 添加关闭事件
+            alert.querySelector('.alert-close').addEventListener('click', () => {
+                alert.remove();
+            });
+            
+            // 5秒后自动关闭
+            setTimeout(() => {
+                if (alert.parentNode) {
+                    alert.remove();
+                }
+            }, 5000);
+        }
         
         // 初始化应用
         async function initApp() {
@@ -648,6 +699,16 @@
             showLoading(favoritesList);
             showLoading(historyList);
             showLoading(menuList);
+            
+            // 检查Supabase连接
+            try {
+                const { error } = await supabase.from('dishes').select('count').limit(1);
+                if (error) throw error;
+            } catch (error) {
+                showAlert('无法连接到Supabase，请检查配置: ' + error.message);
+                console.error('Supabase连接错误:', error);
+                return;
+            }
             
             // 从Supabase加载数据
             await Promise.all([
@@ -697,7 +758,7 @@
                 dishes = data || [];
             } catch (error) {
                 console.error('Error loading dishes:', error);
-                alert('加载菜品数据失败');
+                showAlert('加载菜品数据失败: ' + error.message);
             }
         }
         
@@ -714,7 +775,7 @@
                 categories = data.map(c => c.name) || [];
             } catch (error) {
                 console.error('Error loading categories:', error);
-                alert('加载分类数据失败');
+                showAlert('加载分类数据失败: ' + error.message);
             }
         }
         
@@ -731,36 +792,37 @@
                 menuHistory = data || [];
             } catch (error) {
                 console.error('Error loading menu history:', error);
-                alert('加载菜单历史失败');
+                showAlert('加载菜单历史失败: ' + error.message);
             }
         }
         
         // 保存菜品到Supabase
         async function saveDish(dish) {
             try {
+                let result;
+                
                 if (dish.id) {
                     // 更新现有菜品
-                    const { error } = await supabase
+                    result = await supabase
                         .from('dishes')
                         .update(dish)
                         .eq('id', dish.id);
-                    
-                    if (error) throw error;
                 } else {
                     // 添加新菜品
-                    const { error } = await supabase
+                    result = await supabase
                         .from('dishes')
                         .insert([dish]);
-                    
-                    if (error) throw error;
                 }
+                
+                if (result.error) throw result.error;
                 
                 // 重新加载菜品数据
                 await loadDishes();
+                showAlert('菜品保存成功!', 'success');
                 return true;
             } catch (error) {
                 console.error('Error saving dish:', error);
-                alert('保存菜品失败');
+                showAlert('保存菜品失败: ' + error.message);
                 return false;
             }
         }
@@ -777,10 +839,11 @@
                 
                 // 重新加载菜品数据
                 await loadDishes();
+                showAlert('菜品删除成功!', 'success');
                 return true;
             } catch (error) {
                 console.error('Error deleting dish:', error);
-                alert('删除菜品失败');
+                showAlert('删除菜品失败: ' + error.message);
                 return false;
             }
         }
@@ -796,10 +859,11 @@
                 
                 // 重新加载分类数据
                 await loadCategories();
+                showAlert('分类添加成功!', 'success');
                 return true;
             } catch (error) {
                 console.error('Error adding category:', error);
-                alert('添加分类失败');
+                showAlert('添加分类失败: ' + error.message);
                 return false;
             }
         }
@@ -816,10 +880,11 @@
                 
                 // 重新加载分类数据
                 await loadCategories();
+                showAlert('分类删除成功!', 'success');
                 return true;
             } catch (error) {
                 console.error('Error deleting category:', error);
-                alert('删除分类失败');
+                showAlert('删除分类失败: ' + error.message);
                 return false;
             }
         }
@@ -835,10 +900,11 @@
                 
                 // 重新加载菜单历史数据
                 await loadMenuHistory();
+                showAlert('菜单保存成功!', 'success');
                 return true;
             } catch (error) {
                 console.error('Error saving menu history:', error);
-                alert('保存菜单历史失败');
+                showAlert('保存菜单历史失败: ' + error.message);
                 return false;
             }
         }
@@ -1031,7 +1097,7 @@
                     : dishes.filter(dish => dish.category === category);
                 
                 if (filteredDishes.length === 0) {
-                    alert('该分类下没有菜品！');
+                    showAlert('该分类下没有菜品！');
                     return;
                 }
                 
@@ -1048,7 +1114,7 @@
                 
                 document.getElementById('add-to-menu-random').onclick = () => {
                     toggleDishInMenu(randomDish.id);
-                    alert(`已将"${randomDish.name}"加入今日菜单！`);
+                    showAlert(`已将"${randomDish.name}"加入今日菜单！`, 'success');
                 };
             });
             
@@ -1074,7 +1140,7 @@
                 const menuDishes = dishes.filter(dish => dish.in_menu);
                 
                 if (menuDishes.length === 0) {
-                    alert('今日菜单为空，无法保存！');
+                    showAlert('今日菜单为空，无法保存！');
                     return;
                 }
                 
@@ -1086,7 +1152,10 @@
                 });
                 
                 if (success) {
-                    alert('菜单已保存！');
+                    // 清空今日菜单
+                    for (const dish of menuDishes) {
+                        await toggleDishInMenu(dish.id, false);
+                    }
                 }
             });
             
@@ -1131,7 +1200,7 @@
                 });
                 
                 if (!name || !category || rating === 0) {
-                    alert('请填写必填字段！');
+                    showAlert('请填写必填字段！');
                     return;
                 }
                 
@@ -1164,12 +1233,12 @@
                 const newCategory = document.getElementById('new-category').value.trim();
                 
                 if (!newCategory) {
-                    alert('请输入分类名称！');
+                    showAlert('请输入分类名称！');
                     return;
                 }
                 
                 if (categories.includes(newCategory)) {
-                    alert('该分类已存在！');
+                    showAlert('该分类已存在！');
                     return;
                 }
                 
@@ -1235,7 +1304,7 @@
         }
         
         // 切换菜品在菜单中的状态
-        async function toggleDishInMenu(id) {
+        async function toggleDishInMenu(id, showAlert = true) {
             const dish = dishes.find(d => d.id === id);
             if (!dish) return;
             
@@ -1250,6 +1319,13 @@
                 renderDishesList(categoryFilter.value);
                 renderFavoritesList();
                 renderMenuList();
+                
+                if (showAlert) {
+                    const message = updatedDish.in_menu ? 
+                        `已将"${dish.name}"加入今日菜单！` : 
+                        `已将"${dish.name}"从今日菜单移除！`;
+                    showAlert(message, 'success');
+                }
             }
         }
         
@@ -1308,7 +1384,7 @@
                     const dishesWithCategory = dishes.filter(dish => dish.category === category);
                     
                     if (dishesWithCategory.length > 0) {
-                        alert('该分类下有菜品，无法删除！');
+                        showAlert('该分类下有菜品，无法删除！');
                         return;
                     }
                     
